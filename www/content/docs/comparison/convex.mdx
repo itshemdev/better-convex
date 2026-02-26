@@ -63,9 +63,9 @@ Vanilla Convex gives low-level document queries and writes. The ORM adds a relat
 | Relation `_count` nested relation filter | Manual/custom | No | Blocked in v1 (`RELATION_COUNT_FILTER_UNSUPPORTED`) |
 | Relation `_count` filtered `through()` relation | Manual/custom | Yes | Indexed lookups + no-scan-safe filter validation |
 | Mutation `returning({ _count })` | No | Yes | Split selection + relation count loading on insert/update/delete |
-| `groupBy({ by, _count/_sum/_avg/_min/_max })` | No | Yes | Finite-constrained `by` fields only; no `having`/`orderBy`/`skip`/`take` in v1 |
+| `groupBy({ by, _count/_sum/_avg/_min/_max })` | No | Yes | Finite-constrained `by` fields; `having`/`orderBy`/`skip`/`take`/`cursor` supported |
 | Window analytics (`having` / window functions) | No | No | Deferred |
-| Aggregate runtime (`better-convex/aggregate`) | Yes | Yes | Built-in `TableAggregate` for ranked/namespace use cases (no `@convex-dev/aggregate` dependency) |
+| Ranked access (`rankIndex` + `rank()`) | No | Yes | ORM-native `rankIndex` for leaderboards, random access, sorted pagination (no `@convex-dev/aggregate` dependency) |
 | Aggregate read path overhead | Component calls often cross `ctx.runQuery` boundary | Direct aggregate/count read in current query | ORM avoids extra component read boundary for scalar aggregate/count paths |
 
 ### Mutations, Constraints, and Delete Modes
@@ -92,7 +92,7 @@ Vanilla Convex gives low-level document queries and writes. The ORM adds a relat
 | Role-scoped RLS (`to` + `roleResolver`) | No | Yes | Role rules require resolver wiring |
 | Trusted bypass path | Direct access always bypasses ORM rules | `skipRules` and `ctx.db` bypass | Useful for admin/migration paths |
 | Schema-level triggers | No | Yes | `defineTriggers(...)` with create/update/delete/change hooks |
-| Trigger integration with aggregate runtime | Manual | Yes | Compose `TableAggregate.trigger(change, ctx)` |
+| Trigger integration with aggregates | Manual | Yes | `aggregateIndex` and `rankIndex` backfill automatically; `change` triggers available for custom side effects |
 | Trigger recursion controls | Manual | Yes | `ctx.db` wrapped + `ctx.innerDb` raw escape hatch |
 | Cascade writes and child-table RLS re-check | Manual behavior | Not re-checked | ORM docs: cascade fan-out runs after root check and bypasses child-table RLS |
 | Aggregate/count in RLS-restricted contexts | Manual/custom | Explicitly blocked | `COUNT_RLS_UNSUPPORTED` / `AGGREGATE_RLS_UNSUPPORTED` |

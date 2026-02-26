@@ -188,11 +188,12 @@ const stats = await ctx.orm.query.user.aggregate({
   _max: { score: true },
 });
 
-// Aggregate runtime for advanced/ranked metrics
-const topUsers = await userAggregate.rank(ctx, { limit: 10 });
+// Ranked access via rankIndex
+const lb = ctx.orm.query.scores.rank('leaderboard', { where: { gameId } });
+const top10 = await lb.paginate({ cursor: null, limit: 10 });
 ```
 
-_Use `db.query.*.count(...)` and `db.query.*.aggregate(...)` for scalar metrics. Use `TableAggregate` for ranked and namespace-ordered metrics._
+_Use `count()`/`aggregate()` for scalar metrics. Use `rankIndex` + `rank()` for leaderboards, random access, and sorted pagination._
 
 ## File Structure
 

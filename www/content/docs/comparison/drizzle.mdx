@@ -213,7 +213,7 @@ See [Migrate from native Convex](/docs/migrations/db) (for `ctx.db`) or [Migrate
 | `insert/update/delete` | `insert/update/delete` | Same surface |
 | `count` in query builder | `db.query.*.count()` | Strict no-scan filtered count via declarative `aggregateIndex` |
 | `aggregate` in query builder | `db.query.*.aggregate({...})` | Prisma-style `_count/_sum/_avg/_min/_max`, strict no-scan via declarative `aggregateIndex` |
-| `groupBy` in query builder | `db.query.*.groupBy({...})` | Prisma-style `by` + `_count/_sum/_avg/_min/_max`; requires finite `where` constraints on `by` fields |
+| `groupBy` in query builder | `db.query.*.groupBy({...})` | Prisma-style `by` + `_count/_sum/_avg/_min/_max`; finite `where` constraints on `by` fields; `having`/`orderBy`/`skip`/`take`/`cursor` supported |
 | SQL joins | Not available | Use `with` |
 | Raw SQL | Not available | Convex is document-based |
 | Custom types | Not available | Use app-level encoding |
@@ -245,7 +245,7 @@ See [Migrate from native Convex](/docs/migrations/db) (for `ctx.db`) or [Migrate
 | Vector query mode | SQL/extension-specific | Yes | `findMany({ vectorSearch })` |
 | Cursor pagination | Yes | Yes | ORM cursor is first `orderBy` field |
 | Offset pagination | Yes | Yes | ORM supports `offset`, but deep offsets are not ideal |
-| `groupBy({ by, _count/_sum/_avg/_min/_max })` | Yes | Yes | Finite-constrained `by` fields only; no `having`/`orderBy`/`skip`/`take` in v1 |
+| `groupBy({ by, _count/_sum/_avg/_min/_max })` | Yes | Yes | Finite-constrained `by` fields; `having`/`orderBy`/`skip`/`take`/`cursor` supported |
 | Window analytics (`having` / window functions) | Yes | No | Deferred |
 | Raw SQL / joins | Yes | No | Use relations + document query model |
 | Aggregate read path overhead | n/a | Direct in-query path | ORM aggregate/count reads bucket tables directly (no component `runQuery` boundary) |
@@ -276,7 +276,7 @@ await db.query.users.findMany({
 });
 ```
 
-For rank/window-like aggregation use cases (`at/indexOf/paginate/random`), use aggregate runtime (`TableAggregate`) from `better-convex/aggregate`:
+For rank/window-like aggregation use cases (`at/indexOf/paginate/random`), use `rankIndex` in your schema and `rank()` in queries:
 - Guide: [/docs/orm/queries/aggregates](/docs/orm/queries/aggregates)
 
 ## Post-Fetch Behavior

@@ -316,33 +316,32 @@ Trigger guardrails:
 
 ### 9.3 Aggregates gate
 
-Aggregates use the built-in `better-convex/aggregate` runtime (no external dependency needed):
+Declare `aggregateIndex` and/or `rankIndex` in table definitions. Backfill runs automatically via `better-convex dev`.
 
 ```ts
-// convex/functions/aggregates.ts
-import { TableAggregate } from "better-convex/aggregate";
-import type { DataModel } from "./_generated/dataModel";
+// convex/functions/schema.ts
+const postLikes = convexTable(
+  "postLikes",
+  { postId: text().notNull(), userId: text().notNull() },
+  (t) => [
+    aggregateIndex("by_post").on(t.postId),
+  ]
+);
 
-export const aggregatePostLikes = new TableAggregate<{
-  DataModel: DataModel;
-  Key: null;
-  Namespace: string;
-  TableName: "postLikes";
-}>({
-  name: "aggregatePostLikes",
-  table: "postLikes",
-  namespace: (doc) => doc.postId,
-  sortKey: () => null,
-});
+const scores = convexTable(
+  "scores",
+  { gameId: text().notNull(), score: integer().notNull() },
+  (t) => [
+    rankIndex("leaderboard")
+      .partitionBy(t.gameId)
+      .orderBy({ column: t.score, direction: "desc" }),
+  ]
+);
 ```
 
-Register aggregate in `defineTriggers`.
+No trigger wiring needed — `aggregateIndex` and `rankIndex` are maintained automatically by the ORM.
 
-If Aggregates are **disabled** (`Aggregates: No`), remove all aggregate wiring in one pass:
-
-1. Remove aggregate helper modules (for example `convex/functions/aggregates.ts`).
-2. Remove aggregate `change:` handlers from `defineTriggers`.
-3. Re-run `bunx better-convex dev --once --typecheck disable` immediately to catch stale references.
+If Aggregates are **disabled**, remove `aggregateIndex`/`rankIndex` declarations from table definitions and re-run `bunx better-convex dev --once --typecheck disable`.
 
 ### 9.4 Rate limiting gate
 

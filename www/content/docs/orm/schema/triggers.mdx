@@ -101,25 +101,7 @@ Trigger definitions are schema-level only. `convexTable(..., extraConfig)` no lo
 
 ## Aggregate Integration
 
-Compose aggregate handlers inside `change`:
-
-With `TableAggregate` from `better-convex/aggregate`, you can pass `aggregate.trigger` directly or call `aggregate.trigger(change, ctx)`.
-
-```ts title="convex/functions/schema.ts"
-export const triggers = defineTriggers(relations, {
-  todos: {
-    change: aggregateTodosByUser.trigger,
-  },
-  todoComments: {
-    change: async (change, ctx) => {
-      await aggregateTodosByUser.trigger(change, ctx);
-      await aggregateTodosByProject.trigger(change, ctx);
-    },
-  },
-});
-```
-
-No array API is needed; compose effects directly in one function.
+`aggregateIndex` and `rankIndex` backfill automatically — no trigger wiring needed for ORM-managed aggregates. Use `change` triggers for custom side effects that need to react to writes:
 
 ## Common Patterns
 

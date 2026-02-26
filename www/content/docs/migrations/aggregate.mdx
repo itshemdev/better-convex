@@ -35,7 +35,7 @@ Complete [DB migration](/docs/migrations/db) first. This guide assumes your app 
 | `random(ctx, { namespace })` | `rank(...).random()` | Uniform sampling |
 | `paginateNamespaces(ctx)` | Not available | Query partition values from your table directly |
 | `clear(ctx)` / `clearAll(ctx)` | Not available | Use `aggregateBackfill --mode rebuild` |
-| `DirectAggregate` | Not available | Use `better-convex/aggregate` entrypoint if needed |
+| `DirectAggregate` | Not available | Model data as an ORM table, then use `aggregateIndex` / `rankIndex` |
 
 ## Step 1: Remove Component Wiring
 
@@ -359,7 +359,7 @@ These `@convex-dev/aggregate` features have no direct ORM equivalent:
 
 | Feature | Workaround |
 |---|---|
-| `DirectAggregate` (table-independent) | Use `better-convex/aggregate` entrypoint |
+| `DirectAggregate` (table-independent) | Model data as a table, then use `aggregateIndex` / `rankIndex` |
 | `paginateNamespaces` / `iterNamespaces` | Query partition values from your source table |
 | `iter` (async generator) | Loop `rank(...).paginate()` manually |
 | `countBatch` / `sumBatch` / `atBatch` | Call methods individually (batching not yet supported) |
