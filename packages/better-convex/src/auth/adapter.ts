@@ -132,8 +132,8 @@ export const adapterConfig = {
   supportsArrays: true,
   transaction: false,
   usePlural: false,
-  // Better Auth expects Date runtime values for date fields.
-  // Convex stores numbers, so normalize on input and rehydrate on output.
+  // Convex does not support Date values in function returns.
+  // Keep auth adapter outputs Convex-safe by normalizing date fields to unix millis.
   customTransformInput: ({ data, fieldAttributes }) => {
     if (data && fieldAttributes.type === 'date') {
       return new Date(data).getTime();
@@ -143,7 +143,7 @@ export const adapterConfig = {
   },
   customTransformOutput: ({ data, fieldAttributes }) => {
     if (data && fieldAttributes.type === 'date') {
-      return new Date(data);
+      return new Date(data).getTime();
     }
 
     return data;

@@ -1,3 +1,4 @@
+import { convexToJson } from 'convex/values';
 import {
   adapterConfig,
   dbAdapter,
@@ -82,7 +83,7 @@ describe('handlePagination', () => {
 });
 
 describe('adapterConfig', () => {
-  test('transforms date fields to unix millis for input and Date for output', () => {
+  test('transforms date fields to unix millis for input and output', () => {
     const input = adapterConfig.customTransformInput({
       action: 'create',
       data: '2026-01-01T00:00:00.000Z',
@@ -103,8 +104,31 @@ describe('adapterConfig', () => {
     });
 
     expect(input).toBe(new Date('2026-01-01T00:00:00.000Z').getTime());
-    expect(output).toBeInstanceOf(Date);
-    expect((output as Date).toISOString()).toBe('2026-01-01T00:00:00.000Z');
+    expect(output).toBe(new Date('2026-01-01T00:00:00.000Z').getTime());
+  });
+
+  test('date outputs are Convex-serializable in listOrganizations-like payloads', () => {
+    const createdAt = adapterConfig.customTransformOutput({
+      data: '2025-10-21T19:16:12.867Z',
+      field: 'createdAt',
+      fieldAttributes: { type: 'date' } as any,
+      model: 'organization',
+      options: {} as any,
+      schema: {} as any,
+      select: [],
+    });
+    const payload = [
+      {
+        createdAt,
+        id: 'org_1',
+        logo: null,
+        name: 'Acme',
+        slug: 'acme',
+      },
+    ];
+
+    expect(typeof createdAt).toBe('number');
+    expect(() => convexToJson(payload as any)).not.toThrow();
   });
 
   test('returns non-date values unchanged', () => {
