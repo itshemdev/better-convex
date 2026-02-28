@@ -19,6 +19,9 @@ type ProcedureExport = {
   _crpcMeta?: {
     type?: ProcedureType;
   };
+  isQuery?: boolean;
+  isMutation?: boolean;
+  isAction?: boolean;
   __betterConvexTransformer?: DataTransformerOptions;
   __betterConvexRawHandler?: ProcedureRawHandler;
 };
@@ -370,6 +373,25 @@ function isProcedureDefinition(
   return isRecord(value) && isProcedureType(value._type);
 }
 
+function getProcedureTypeFromExport(
+  value: ProcedureExport
+): ProcedureType | null {
+  const crpcType = value._crpcMeta?.type;
+  if (isProcedureType(crpcType)) {
+    return crpcType;
+  }
+  if (value.isQuery === true) {
+    return 'query';
+  }
+  if (value.isMutation === true) {
+    return 'mutation';
+  }
+  if (value.isAction === true) {
+    return 'action';
+  }
+  return null;
+}
+
 function isProcedureExport(value: unknown): value is ProcedureExport {
   if (
     value === null ||
@@ -379,8 +401,7 @@ function isProcedureExport(value: unknown): value is ProcedureExport {
   }
   const exportValue = value as ProcedureExport;
   if (typeof exportValue._handler !== 'function') return false;
-  const type = exportValue._crpcMeta?.type;
-  return isProcedureType(type);
+  return getProcedureTypeFromExport(exportValue) !== null;
 }
 
 function decodeProcedureResult(procedure: ProcedureExport, value: unknown) {
@@ -539,9 +560,10 @@ function createRecursiveProxy(
         );
       }
 
-      if (resolved._crpcMeta?.type !== node._type) {
+      const resolvedType = getProcedureTypeFromExport(resolved);
+      if (resolvedType !== node._type) {
         throw new Error(
-          `[better-convex] Procedure type mismatch at "${pathString}". Expected "${node._type}" but got "${resolved._crpcMeta?.type ?? 'unknown'}".`
+          `[better-convex] Procedure type mismatch at "${pathString}". Expected "${node._type}" but got "${resolvedType ?? 'unknown'}".`
         );
       }
 
@@ -777,9 +799,12 @@ function createActionsRegistryProxy(
         );
       }
 
-      if (procedure && procedure._crpcMeta?.type !== procedureType) {
+      const resolvedType = procedure
+        ? getProcedureTypeFromExport(procedure)
+        : null;
+      if (procedure && resolvedType !== procedureType) {
         throw new Error(
-          `[better-convex] Procedure type mismatch at "${pathString}". Expected "${procedureType}" but got "${procedure._crpcMeta?.type ?? 'unknown'}".`
+          `[better-convex] Procedure type mismatch at "${pathString}". Expected "${procedureType}" but got "${resolvedType ?? 'unknown'}".`
         );
       }
 
@@ -846,9 +871,12 @@ function createScheduledRegistryProxy(
         );
       }
 
-      if (procedure && procedure._crpcMeta?.type !== procedureType) {
+      const resolvedType = procedure
+        ? getProcedureTypeFromExport(procedure)
+        : null;
+      if (procedure && resolvedType !== procedureType) {
         throw new Error(
-          `[better-convex] Procedure type mismatch at "${pathString}". Expected "${procedureType}" but got "${procedure._crpcMeta?.type ?? 'unknown'}".`
+          `[better-convex] Procedure type mismatch at "${pathString}". Expected "${procedureType}" but got "${resolvedType ?? 'unknown'}".`
         );
       }
 
@@ -961,9 +989,12 @@ function createRegistryProxy(
         );
       }
 
-      if (procedure && procedure._crpcMeta?.type !== procedureType) {
+      const resolvedType = procedure
+        ? getProcedureTypeFromExport(procedure)
+        : null;
+      if (procedure && resolvedType !== procedureType) {
         throw new Error(
-          `[better-convex] Procedure type mismatch at "${pathString}". Expected "${procedureType}" but got "${procedure._crpcMeta?.type ?? 'unknown'}".`
+          `[better-convex] Procedure type mismatch at "${pathString}". Expected "${procedureType}" but got "${resolvedType ?? 'unknown'}".`
         );
       }
 

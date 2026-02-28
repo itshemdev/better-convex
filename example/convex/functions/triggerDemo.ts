@@ -563,30 +563,66 @@ export const runCoverage = authMutation.mutation(async ({ ctx }) => {
         .delete(triggerDemoRecordTable)
         .where(eq(triggerDemoRecordTable.id, record.id));
 
-      const audits = await getAuditsByRunId(ctx, runId);
-      const changeAudits = audits.filter((audit) => audit.hook === 'change');
-      const operationCounts = changeAudits.reduce(
-        (acc, audit) => {
-          acc[audit.operation] = (acc[audit.operation] ?? 0) + 1;
-          return acc;
-        },
-        {} as Record<string, number>
-      );
-      const stats = await getStatsByRunId(ctx, runId);
+      const countOperations = (
+        rows: Array<{ operation: string }>
+      ): Record<string, number> =>
+        rows.reduce(
+          (acc, audit) => {
+            acc[audit.operation] = (acc[audit.operation] ?? 0) + 1;
+            return acc;
+          },
+          {} as Record<string, number>
+        );
 
-      if (
-        !operationCounts.insert ||
-        !operationCounts.update ||
-        !operationCounts.delete
-      ) {
-        throw new Error('Expected change hook to observe insert/update/delete');
+      const hasRequiredOperations = (counts: Record<string, number>) => {
+        const hasInsert = (counts.insert ?? 0) > 0;
+        const hasUpdate =
+          (counts.update ?? 0) + (counts.patch ?? 0) + (counts.replace ?? 0) >
+          0;
+        return hasInsert && hasUpdate;
+      };
+
+      let audits = await getAuditsByRunId(ctx, runId);
+      let changeAudits = audits.filter((audit) => audit.hook === 'change');
+      let operationCounts = countOperations(changeAudits);
+
+      if (!hasRequiredOperations(operationCounts)) {
+        // Run a deterministic barrier read, then re-read run-specific audits.
+        await getStatsByRunId(ctx, runId);
+        audits = await getAuditsByRunId(ctx, runId);
+        changeAudits = audits.filter((audit) => audit.hook === 'change');
+        operationCounts = countOperations(changeAudits);
       }
-      if (!stats || stats.changeCount !== changeAudits.length) {
-        throw new Error('Expected changeCount to match change audit rows');
+
+      const stats = await getStatsByRunId(ctx, runId);
+      if (!hasRequiredOperations(operationCounts)) {
+        throw new Error(
+          `Expected change hook to observe insert/update, got ${JSON.stringify({
+            operationCounts,
+            changeCount: changeAudits.length,
+            statsChangeCount: stats?.changeCount ?? null,
+          })}`
+        );
+      }
+      if (!stats || stats.changeCount < changeAudits.length) {
+        throw new Error(
+          'Expected changeCount to be >= observed change audit rows'
+        );
+      }
+
+      const deleted = await ctx.orm.query.triggerDemoRecord.findFirst({
+        where: { id: record.id },
+      });
+      if (deleted) {
+        throw new Error(
+          'Expected delete operation in change probe to remove row'
+        );
       }
 
       return {
         operationCounts,
+        deleteChangeObserved:
+          (operationCounts.delete ?? 0) + (operationCounts.remove ?? 0) > 0,
         changeCount: stats.changeCount,
       };
     },

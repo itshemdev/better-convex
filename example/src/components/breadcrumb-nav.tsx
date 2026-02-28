@@ -14,6 +14,7 @@ import {
   LogIn,
   LogOut,
   Route as RouteIcon,
+  ShieldUser,
   Tags,
   TestTube2,
   User,
@@ -59,6 +60,12 @@ const APP_NAV_ITEMS = [
 
 const LAB_NAV_ITEMS = [
   {
+    href: '/auth' as const,
+    label: 'Auth',
+    icon: ShieldUser,
+    match: (p: string) => p.startsWith('/auth'),
+  },
+  {
     href: '/aggregate' as const,
     label: 'Aggregate',
     icon: BarChart3,
@@ -89,6 +96,7 @@ type NavSection = 'app' | 'labs';
 function activeSectionFromPath(pathname: string): NavSection {
   if (
     pathname.startsWith('/aggregate') ||
+    pathname.startsWith('/auth') ||
     pathname.startsWith('/ratelimit') ||
     pathname.startsWith('/triggers') ||
     pathname.startsWith('/migrations')

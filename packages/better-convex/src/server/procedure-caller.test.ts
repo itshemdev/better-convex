@@ -350,6 +350,41 @@ describe('server/procedure-caller', () => {
     expect(runQuery).toHaveBeenCalledTimes(0);
   });
 
+  test('generated caller on mutation ctx accepts non-cRPC mutation export with Convex metadata flags', async () => {
+    const procedure = {
+      isMutation: true,
+      _handler: async (
+        _ctx: unknown,
+        input: { limit: number }
+      ): Promise<{ ok: boolean; limit: number }> => ({
+        ok: true,
+        limit: input.limit,
+      }),
+    };
+
+    const mutationRef = { path: 'generated.server.migrationStatus' } as any;
+    const registry = {
+      'generated.server.migrationStatus': [
+        'mutation',
+        typedProcedureResolver(mutationRef, async () => procedure),
+      ],
+    } as const;
+
+    const createCaller = createGenericCallerFactory<
+      QueryCtx,
+      MutationCtx,
+      typeof registry
+    >(registry);
+
+    const caller = createCaller(mutationCtx);
+    await expect(
+      caller.generated.server.migrationStatus({ limit: 200 })
+    ).resolves.toEqual({
+      ok: true,
+      limit: 200,
+    });
+  });
+
   test('generated caller on action ctx rejects action procedures', async () => {
     const c = initCRPC.create();
     const procedure = c.action

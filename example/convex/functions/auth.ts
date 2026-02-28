@@ -2,6 +2,10 @@ import { admin, anonymous, organization } from 'better-auth/plugins';
 import { convex } from 'better-convex/auth';
 import { requireActionCtx } from 'better-convex/server';
 import { getEnv } from '../lib/get-env';
+import {
+  AUTH_DEMO_ANON_EMAIL_DOMAIN,
+  AUTH_DEMO_ANON_NAME_PREFIX,
+} from '../shared/auth-anonymous-demo';
 import { ac, roles } from '../shared/auth-shared';
 import { internal } from './_generated/api';
 import authConfig from './auth.config';
@@ -24,7 +28,27 @@ export default defineAuth((ctx) => {
     baseURL: env.SITE_URL,
     plugins: [
       admin(),
-      anonymous(),
+      anonymous({
+        emailDomainName: AUTH_DEMO_ANON_EMAIL_DOMAIN,
+        generateName: async () =>
+          `${AUTH_DEMO_ANON_NAME_PREFIX}-${Math.random().toString(36).slice(2, 10)}`,
+        onLinkAccount: async ({ anonymousUser, newUser, ctx: linkCtx }) => {
+          const sourceBio =
+            typeof anonymousUser.user.bio === 'string'
+              ? anonymousUser.user.bio.trim()
+              : '';
+          const destinationBio =
+            typeof newUser.user.bio === 'string' ? newUser.user.bio.trim() : '';
+
+          if (!sourceBio || destinationBio) {
+            return;
+          }
+
+          await linkCtx.context.internalAdapter.updateUser(newUser.user.id, {
+            bio: sourceBio,
+          });
+        },
+      }),
       organization({
         ac,
         roles,

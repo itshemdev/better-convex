@@ -1,0 +1,319 @@
+---
+title: Anonymous
+description: Guest sessions with Better Auth anonymous plugin and Convex.
+links:
+  doc: https://www.better-auth.com/docs/plugins/anonymous
+---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore anonymous authentication with better-convex. You'll learn to configure guest sessions, let users browse without signing up, and seamlessly link anonymous accounts to real ones — migrating their data along the way.
+
+## Overview
+
+Anonymous auth built on [Better Auth's anonymous plugin](https://www.better-auth.com/docs/plugins/anonymous):
+
+| Feature | Description |
+|---------|-------------|
+| Anonymous sign-in | Create authenticated sessions without credentials |
+| `isAnonymous` flag | Identify guest users in your schema |
+| Custom email domain | Control the synthetic email domain for anonymous users |
+| Custom name generation | Generate readable display names for guests |
+| Account linking | Upgrade anonymous users to real accounts |
+| Data migration callback | Copy domain data during the linking process |
+| Source user deletion | Automatically clean up anonymous records after linking |
+
+Let's set up anonymous auth step by step.
+
+## Prerequisites
+
+Ensure you have [Auth Server](/docs/auth/server) set up before adding anonymous features.
+
+## 1. Server Configuration
+
+Add the anonymous plugin to your auth options. We'll configure all the key options — a custom email domain, a name generator, and a data migration callback:
+
+```ts title="convex/functions/auth.ts" showLineNumbers {1,6-24}
+import { anonymous } from 'better-auth/plugins';
+import { defineAuth } from './generated/auth';
+
+export default defineAuth((ctx) => ({
+  plugins: [
+    anonymous({
+      emailDomainName: 'guest.yourapp.com',
+      generateName: async () =>
+        `Guest-${Math.random().toString(36).slice(2, 10)}`,
+      onLinkAccount: async ({ anonymousUser, newUser, ctx: linkCtx }) => {
+        const sourceBio =
+          typeof anonymousUser.user.bio === 'string'
+            ? anonymousUser.user.bio.trim()
+            : '';
+        const destinationBio =
+          typeof newUser.user.bio === 'string' ? newUser.user.bio.trim() : '';
+
+        if (!sourceBio || destinationBio) return;
+
+        await linkCtx.context.internalAdapter.updateUser(newUser.user.id, {
+          bio: sourceBio,
+        });
+      },
+    }),
+    // ... other plugins
+  ],
+}));
+```
+
+Here's what each option does:
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `emailDomainName` | `string` | Domain for synthetic anonymous emails (e.g. `guest@guest.yourapp.com`). Defaults to `"better-auth.anonymous"` |
+| `generateName` | `() => Promise<string>` | Async function that returns a display name for the anonymous user |
+| `onLinkAccount` | `(opts) => Promise<void>` | Callback that runs when an anonymous user links to a real account. Use this to migrate domain data |
+| `disableDeleteAnonymousUser` | `boolean` | When `true`, keeps the anonymous user record after linking instead of deleting it |
+| `generateRandomEmail` | `(opts) => Promise<string>` | Custom function to generate the full anonymous email address |
+
+<Callout icon={<InfoIcon />}>
+The `emailDomainName` should be a domain you control or a clearly non-routable domain. This prevents accidental email delivery to synthetic addresses.
+</Callout>
+
+## 2. Client Configuration
+
+Add the anonymous client plugin so you can call `signIn.anonymous()` from your frontend:
+
+```ts title="src/lib/convex/auth-client.ts" showLineNumbers {1,6}
+import { anonymousClient } from 'better-auth/client/plugins';
+
+export const authClient = createAuthClient({
+  // ... existing config
+  plugins: [
+    anonymousClient(),
+    // ... other plugins
+  ],
+});
+```
+
+That's it for client setup — `anonymousClient()` doesn't require any configuration.
+
+## 3. Schema
+
+Add the `isAnonymous` field to your user table so you can distinguish guest users from real accounts:
+
+```ts title="convex/functions/schema.ts" showLineNumbers {1-2,6}
+import { boolean, convexTable, defineSchema, text } from 'better-convex/orm';
+
+export const user = convexTable('user', {
+  // ... existing fields
+  role: text(),
+  isAnonymous: boolean(),
+});
+```
+
+Better Auth sets `isAnonymous` to `true` when creating anonymous users and clears it when the user links to a real account.
+
+## Anonymous Sign-In
+
+Now let's use anonymous auth. Call `authClient.signIn.anonymous()` to create a guest session:
+
+```ts showLineNumbers
+await authClient.signIn.anonymous({
+  fetchOptions: { throw: true },
+});
+```
+
+When this runs, Better Auth:
+
+1. Creates a new user with `isAnonymous: true`
+2. Generates a synthetic email using your `emailDomainName` (e.g. `abc123@guest.yourapp.com`)
+3. Generates a display name using your `generateName` function
+4. Creates an authenticated session — the user is now fully signed in
+
+The anonymous user gets a real session token, so all your auth middleware and permission checks work exactly the same as for regular users.
+
+## Account Linking
+
+The real power of anonymous auth is letting users try your app first, then upgrade to a real account without losing their work. Here's the flow:
+
+1. User signs in anonymously → gets a session with `isAnonymous: true`
+2. User decides to create a real account → calls `signUp.email` (or links a social provider)
+3. Better Auth detects the existing anonymous session and links the accounts
+4. Your `onLinkAccount` callback runs — this is where you migrate data
+5. The anonymous user record is deleted (unless `disableDeleteAnonymousUser: true`)
+
+Here's the linking call from the client:
+
+```ts showLineNumbers
+// User is currently signed in anonymously.
+// When they sign up, Better Auth links automatically.
+await authClient.signUp.email({
+  email: 'user@example.com',
+  name: 'Real Name',
+  password: 'secure-password',
+});
+```
+
+### The `onLinkAccount` Callback
+
+This callback is your chance to migrate domain data from the anonymous user to the newly linked account. Here's the bio migration pattern from the example app:
+
+```ts title="convex/functions/auth.ts" showLineNumbers {2-14}
+anonymous({
+  onLinkAccount: async ({ anonymousUser, newUser, ctx: linkCtx }) => {
+    const sourceBio =
+      typeof anonymousUser.user.bio === 'string'
+        ? anonymousUser.user.bio.trim()
+        : '';
+    const destinationBio =
+      typeof newUser.user.bio === 'string' ? newUser.user.bio.trim() : '';
+
+    // Only copy if source has bio and destination doesn't
+    if (!sourceBio || destinationBio) return;
+
+    await linkCtx.context.internalAdapter.updateUser(newUser.user.id, {
+      bio: sourceBio,
+    });
+  },
+}),
+```
+
+The callback receives:
+
+| Parameter | Description |
+|-----------|-------------|
+| `anonymousUser.user` | The anonymous user record (source) |
+| `newUser.user` | The newly created/linked user record (destination) |
+| `ctx.context.internalAdapter` | Database adapter for updating user records |
+
+<Callout icon={<InfoIcon />}>
+By default, the anonymous source user is **deleted** after linking. Set `disableDeleteAnonymousUser: true` if you need to keep anonymous records for auditing or compliance.
+</Callout>
+
+## Data Migration Patterns
+
+The `onLinkAccount` callback is flexible. Here are common patterns for migrating domain data:
+
+### Cart Migration
+
+```ts showLineNumbers {2-7}
+onLinkAccount: async ({ anonymousUser, newUser, ctx: linkCtx }) => {
+  // Move cart items from anonymous user to linked user
+  await linkCtx.context.internalAdapter.updateMany('cart_items', {
+    where: { userId: anonymousUser.user.id },
+    data: { userId: newUser.user.id },
+  });
+},
+```
+
+### Draft Content Migration
+
+```ts showLineNumbers {2-7}
+onLinkAccount: async ({ anonymousUser, newUser, ctx: linkCtx }) => {
+  // Transfer draft posts/documents
+  await linkCtx.context.internalAdapter.updateMany('drafts', {
+    where: { authorId: anonymousUser.user.id },
+    data: { authorId: newUser.user.id },
+  });
+},
+```
+
+### Profile Field Copy
+
+```ts showLineNumbers {2-10}
+onLinkAccount: async ({ anonymousUser, newUser, ctx: linkCtx }) => {
+  // Copy profile fields the anonymous user set
+  const updates: Record<string, string> = {};
+  if (anonymousUser.user.bio) updates.bio = anonymousUser.user.bio;
+  if (anonymousUser.user.location) updates.location = anonymousUser.user.location;
+
+  if (Object.keys(updates).length > 0) {
+    await linkCtx.context.internalAdapter.updateUser(newUser.user.id, updates);
+  }
+},
+```
+
+## What's Not Automatic
+
+<Callout icon={<InfoIcon />}>
+**Domain data migration is not automatic.** Better Auth handles the user/session linking, but your app's domain data — carts, drafts, quotas, profile fields — must be migrated in `onLinkAccount`. If you skip this callback, anonymous user data stays orphaned (or gets deleted with the anonymous record).
+</Callout>
+
+<Callout icon={<InfoIcon />}>
+**Compliance logging is not built-in.** If you need audit trails for anonymous-to-account conversions, add logging in your `onLinkAccount` callback or use proxy/HTTP logging separately.
+</Callout>
+
+## Client Usage
+
+### "Continue as Guest" Button
+
+The most common pattern is a guest button alongside your regular sign-in options. Here's how the example app does it with TanStack Query:
+
+```tsx title="src/components/login-form.tsx" showLineNumbers {1,4-11,14-16,21-29}
+import { authClient } from '@/lib/convex/auth-client';
+import { useMutation } from '@tanstack/react-query';
+
+const signInAnonymous = useMutation({
+  mutationFn: async () => {
+    await authClient.signIn.anonymous({
+      fetchOptions: { throw: true },
+    });
+  },
+  onSuccess: () => router.push('/'),
+});
+
+// In your JSX:
+const handleAnonymousSignIn = () => {
+  signInAnonymous.mutate();
+};
+
+return (
+  <div>
+    {/* Other sign-in buttons... */}
+    <Button
+      disabled={signInAnonymous.isPending}
+      onClick={handleAnonymousSignIn}
+      variant="outline"
+    >
+      Continue as Guest
+    </Button>
+  </div>
+);
+```
+
+### Checking Anonymous Status
+
+You can check whether the current user is anonymous to show upgrade prompts:
+
+```tsx showLineNumbers {1,4-5,8-10}
+import { authClient } from '@/lib/convex/auth-client';
+
+function UpgradePrompt() {
+  const { data: session } = authClient.useSession();
+  const isAnonymous = session?.user?.isAnonymous;
+
+  if (!isAnonymous) return null;
+
+  return (
+    <div>
+      Create an account to save your progress.
+    </div>
+  );
+}
+```
+
+## API Reference
+
+| Operation | Method | Description |
+|-----------|--------|-------------|
+| Anonymous sign-in | `authClient.signIn.anonymous()` | Create a guest session |
+| Account linking | `authClient.signUp.email()` | Link anonymous user to email account |
+| Social linking | `authClient.signIn.social()` | Link anonymous user to social provider |
+| Check status | `session.user.isAnonymous` | Whether the current user is anonymous |
+
+## Next Steps
+
+<Cards>
+  <Card title="Admin" href="/docs/auth/plugins/admin" />
+  <Card title="Organizations" href="/docs/auth/plugins/organizations" />
+  <Card title="Auth Server" href="/docs/auth/server" />
+  <Card title="Auth Client" href="/docs/auth/client" />
+</Cards>

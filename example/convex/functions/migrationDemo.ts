@@ -1,8 +1,7 @@
 import { z } from 'zod';
-import { authMutation, authQuery } from '../lib/crpc';
-import { internal } from './_generated/api';
+import { authMutation } from '../lib/crpc';
+import { createServerCaller } from './generated/server.runtime';
 
-const generatedServerInternal = internal.generated.server;
 const LOG_PREFIX = '[migration-demo]';
 
 function log(action: string, payload?: unknown): void {
@@ -22,11 +21,17 @@ const downInputSchema = z
     message: 'Use either steps or to, not both.',
   });
 
-export const getStatus = authQuery.query(async ({ ctx }) => {
-  const [runs, states] = await Promise.all([
-    ctx.db.query('migration_run').collect(),
-    ctx.db.query('migration_state').collect(),
-  ]);
+export const getStatus = authMutation.mutation(async ({ ctx }) => {
+  const server = createServerCaller(ctx);
+  const status = await server.migrationStatus({ limit: 200 });
+
+  const runs = Array.isArray(status.runs) ? status.runs : [];
+  const states = Array.isArray(status.migrations) ? status.migrations : [];
+  const activeRun =
+    status.activeRun && typeof status.activeRun === 'object'
+      ? status.activeRun
+      : null;
+
   const sortedRuns = [...runs].sort((left, right) => {
     const leftStarted = left.startedAt ?? 0;
     const rightStarted = right.startedAt ?? 0;
@@ -36,7 +41,6 @@ export const getStatus = authQuery.query(async ({ ctx }) => {
     String(left.migrationId).localeCompare(String(right.migrationId))
   );
 
-  const activeRun = sortedRuns.find((run) => run.status === 'running') ?? null;
   const latestRun = sortedRuns[0] ?? null;
 
   log('status', {
@@ -55,8 +59,9 @@ export const getStatus = authQuery.query(async ({ ctx }) => {
 });
 
 export const runUp = authMutation.mutation(async ({ ctx }) => {
+  const server = createServerCaller(ctx);
   log('runUp request');
-  const result = await ctx.runMutation(generatedServerInternal.migrationRun, {
+  const result = await server.migrationRun({
     direction: 'up',
   });
   log('runUp response', result);
@@ -66,8 +71,9 @@ export const runUp = authMutation.mutation(async ({ ctx }) => {
 export const runDown = authMutation
   .input(downInputSchema)
   .mutation(async ({ ctx, input }) => {
+    const server = createServerCaller(ctx);
     log('runDown request', input);
-    const result = await ctx.runMutation(generatedServerInternal.migrationRun, {
+    const result = await server.migrationRun({
       direction: 'down',
       ...(input.steps !== undefined ? { steps: input.steps } : {}),
       ...(input.to !== undefined ? { to: input.to } : {}),
@@ -77,11 +83,9 @@ export const runDown = authMutation
   });
 
 export const cancel = authMutation.mutation(async ({ ctx }) => {
+  const server = createServerCaller(ctx);
   log('cancel request');
-  const result = await ctx.runMutation(
-    generatedServerInternal.migrationCancel,
-    {}
-  );
+  const result = await server.migrationCancel({});
   log('cancel response', result);
   return result;
 });

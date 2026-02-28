@@ -14,10 +14,10 @@ import { api, internal } from '../_generated/api.js';
 import type { ActionCtx, MutationCtx, QueryCtx } from './server';
 
 const procedureRegistry = {
-  "cancel": ["mutation", typedProcedureResolver(api["migrationDemo"]["cancel"], () => (require("../migrationDemo") as Record<string, unknown>)["cancel"])],
-  "getStatus": ["mutation", typedProcedureResolver(api["migrationDemo"]["getStatus"], () => (require("../migrationDemo") as Record<string, unknown>)["getStatus"])],
-  "runDown": ["mutation", typedProcedureResolver(api["migrationDemo"]["runDown"], () => (require("../migrationDemo") as Record<string, unknown>)["runDown"])],
-  "runUp": ["mutation", typedProcedureResolver(api["migrationDemo"]["runUp"], () => (require("../migrationDemo") as Record<string, unknown>)["runUp"])],
+  "getAuthState": ["query", typedProcedureResolver(api["authDemo"]["getAuthState"], () => (require("../authDemo") as Record<string, unknown>)["getAuthState"])],
+  "getSnapshot": ["query", typedProcedureResolver(api["authDemo"]["getSnapshot"], () => (require("../authDemo") as Record<string, unknown>)["getSnapshot"])],
+  "runCoverage": ["mutation", typedProcedureResolver(api["authDemo"]["runCoverage"], () => (require("../authDemo") as Record<string, unknown>)["runCoverage"])],
+  "runScenario": ["mutation", typedProcedureResolver(api["authDemo"]["runScenario"], () => (require("../authDemo") as Record<string, unknown>)["runScenario"])],
 } as const;
 
 type ProcedureCallerContext = QueryCtx | MutationCtx | ActionCtx;
@@ -55,13 +55,13 @@ const createHandlerFromRegistry = createGenericHandlerFactory<
 >(procedureRegistry);
 
 
-export function createMigrationDemoCaller<TCtx extends ProcedureCallerContext>(
+export function createAuthDemoCaller<TCtx extends ProcedureCallerContext>(
   ctx: TCtx
 ): GeneratedProcedureCaller<TCtx> {
   return createCallerFromRegistry(ctx) as GeneratedProcedureCaller<TCtx>;
 }
 
-export function createMigrationDemoHandler<TCtx extends ProcedureHandlerContext>(
+export function createAuthDemoHandler<TCtx extends ProcedureHandlerContext>(
   ctx: TCtx
 ): GeneratedProcedureHandler<TCtx> {
   return createHandlerFromRegistry(ctx) as GeneratedProcedureHandler<TCtx>;

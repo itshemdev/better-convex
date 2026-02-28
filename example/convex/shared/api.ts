@@ -24,6 +24,12 @@ export const api = {
     runDirectOp: createApiLeaf<"mutation", typeof import("../functions/aggregateDemo").runDirectOp>(convexApi["aggregateDemo"]["runDirectOp"], { auth: "required", type: "mutation" }),
     toggleRandomFillReset: createApiLeaf<"mutation", typeof import("../functions/aggregateDemo").toggleRandomFillReset>(convexApi["aggregateDemo"]["toggleRandomFillReset"], { auth: "required", type: "mutation" }),
   },
+  authDemo: {
+    getAuthState: createApiLeaf<"query", typeof import("../functions/authDemo").getAuthState>(convexApi["authDemo"]["getAuthState"], { auth: "required", type: "query" }),
+    getSnapshot: createApiLeaf<"query", typeof import("../functions/authDemo").getSnapshot>(convexApi["authDemo"]["getSnapshot"], { auth: "required", type: "query" }),
+    runCoverage: createApiLeaf<"mutation", typeof import("../functions/authDemo").runCoverage>(convexApi["authDemo"]["runCoverage"], { auth: "required", type: "mutation" }),
+    runScenario: createApiLeaf<"mutation", typeof import("../functions/authDemo").runScenario>(convexApi["authDemo"]["runScenario"], { auth: "required", type: "mutation" }),
+  },
   items: {
     queries: {
       get: createApiLeaf<"query", typeof import("../functions/items/queries").get>(convexApi["items"]["queries"]["get"], { type: "query" }),
@@ -32,7 +38,7 @@ export const api = {
   },
   migrationDemo: {
     cancel: createApiLeaf<"mutation", typeof import("../functions/migrationDemo").cancel>(convexApi["migrationDemo"]["cancel"], { auth: "required", type: "mutation" }),
-    getStatus: createApiLeaf<"query", typeof import("../functions/migrationDemo").getStatus>(convexApi["migrationDemo"]["getStatus"], { auth: "required", type: "query" }),
+    getStatus: createApiLeaf<"mutation", typeof import("../functions/migrationDemo").getStatus>(convexApi["migrationDemo"]["getStatus"], { auth: "required", type: "mutation" }),
     runDown: createApiLeaf<"mutation", typeof import("../functions/migrationDemo").runDown>(convexApi["migrationDemo"]["runDown"], { auth: "required", type: "mutation" }),
     runUp: createApiLeaf<"mutation", typeof import("../functions/migrationDemo").runUp>(convexApi["migrationDemo"]["runUp"], { auth: "required", type: "mutation" }),
   },

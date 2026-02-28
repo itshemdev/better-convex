@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMaybeAuth } from 'better-convex/react';
+import { useAuth } from 'better-convex/react';
 import {
   Activity,
   AlertTriangle,
@@ -20,6 +20,22 @@ import { useCRPC } from '@/lib/convex/crpc';
 import { cn } from '@/lib/utils';
 
 const STATUS_ORDER = ['supported', 'partial', 'blocked', 'missing'] as const;
+const EMPTY_SNAPSHOT: TriggerSnapshot = {
+  generatedAt: '1970-01-01T00:00:00.000Z',
+  entries: [],
+  summary: {
+    supported: 0,
+    partial: 0,
+    blocked: 0,
+    missing: 0,
+  },
+  validated: 0,
+  total: 0,
+  samples: {
+    hookCounts: {},
+    runCount: 0,
+  },
+};
 
 type TriggerStatus = (typeof STATUS_ORDER)[number];
 
@@ -85,7 +101,8 @@ function JsonBox({ label, value }: { label: string; value: unknown }) {
 }
 
 export default function TriggersPage() {
-  const isAuth = useMaybeAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+  const canRun = isAuthenticated && !isLoading;
   const crpc = useCRPC();
   const queryClient = useQueryClient();
   const [lastRun, setLastRun] = useState<TriggerSnapshot | null>(null);
@@ -96,22 +113,12 @@ export default function TriggersPage() {
     })
   );
 
-  const snapshot = (snapshotQuery.data ?? {
-    generatedAt: new Date().toISOString(),
-    entries: [],
-    summary: {
-      supported: 0,
-      partial: 0,
-      blocked: 0,
-      missing: 0,
-    },
-    validated: 0,
-    total: 0,
-    samples: {
-      hookCounts: {},
-      runCount: 0,
-    },
-  }) as TriggerSnapshot;
+  const snapshot = (snapshotQuery.data ?? EMPTY_SNAPSHOT) as TriggerSnapshot;
+  const effectiveSnapshot = lastRun ?? snapshot;
+  const hasRenderedCoverage = Boolean(lastRun) || effectiveSnapshot.total > 0;
+  const generatedAtLabel = hasRenderedCoverage
+    ? new Date(effectiveSnapshot.generatedAt).toLocaleTimeString()
+    : '—';
 
   const runCoverage = useMutation(
     crpc.triggerDemo.runCoverage.mutationOptions({
@@ -128,8 +135,8 @@ export default function TriggersPage() {
     })
   );
 
-  const validated = snapshot.entries.filter(expectedPass).length;
-  const total = snapshot.entries.length;
+  const validated = effectiveSnapshot.entries.filter(expectedPass).length;
+  const total = effectiveSnapshot.entries.length;
 
   return (
     <div className="mx-auto max-w-7xl snap-y snap-mandatory @3xl:px-8 px-6 @3xl:py-12 py-8">
@@ -166,7 +173,7 @@ export default function TriggersPage() {
                 Supported
               </p>
               <p className="mt-1 font-semibold text-2xl">
-                {snapshot.summary.supported ?? 0}
+                {effectiveSnapshot.summary.supported ?? 0}
               </p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
@@ -174,16 +181,14 @@ export default function TriggersPage() {
                 Runs
               </p>
               <p className="mt-1 font-semibold text-2xl">
-                {snapshot.samples.runCount ?? 0}
+                {effectiveSnapshot.samples.runCount ?? 0}
               </p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
               <p className="text-[11px] text-zinc-300 uppercase tracking-[0.14em]">
                 Generated
               </p>
-              <p className="mt-1 font-semibold text-sm">
-                {new Date(snapshot.generatedAt).toLocaleTimeString()}
-              </p>
+              <p className="mt-1 font-semibold text-sm">{generatedAtLabel}</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
               <p className="text-[11px] text-zinc-300 uppercase tracking-[0.14em]">
@@ -195,8 +200,8 @@ export default function TriggersPage() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {isAuth ? (
+          <div className="flex min-h-9 flex-wrap items-center gap-3">
+            {canRun ? (
               <Button
                 className="gap-2"
                 disabled={runCoverage.isPending}
@@ -210,8 +215,13 @@ export default function TriggersPage() {
                 )}
                 Run Trigger Coverage
               </Button>
+            ) : isLoading ? (
+              <div
+                aria-hidden
+                className="h-9 w-44 animate-pulse rounded-md bg-white/15"
+              />
             ) : (
-              <div className="inline-flex items-center gap-2 rounded-lg bg-amber-100 px-3 py-2 text-amber-900 text-sm">
+              <div className="inline-flex h-9 items-center gap-2 rounded-lg bg-amber-100 px-3 py-2 text-amber-900 text-sm">
                 <AlertTriangle className="size-4" />
                 Sign in to execute trigger probes.
               </div>
@@ -244,7 +254,7 @@ export default function TriggersPage() {
             </thead>
             <tbody>
               {STATUS_ORDER.flatMap((status) =>
-                snapshot.entries
+                effectiveSnapshot.entries
                   .filter((entry) => entry.status === status)
                   .map((entry) => {
                     const passed = expectedPass(entry);
@@ -315,7 +325,7 @@ export default function TriggersPage() {
         </div>
 
         <div className="grid @lg:grid-cols-4 gap-3">
-          {Object.entries(snapshot.samples.hookCounts ?? {}).map(
+          {Object.entries(effectiveSnapshot.samples.hookCounts ?? {}).map(
             ([key, value]) => (
               <div className="rounded-xl bg-secondary/30 p-3" key={key}>
                 <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
@@ -334,7 +344,7 @@ export default function TriggersPage() {
           <h2 className="font-medium text-lg tracking-tight">Raw Payloads</h2>
         </div>
         <div className="grid @2xl:grid-cols-2 gap-3">
-          <JsonBox label="snapshot payload" value={snapshot} />
+          <JsonBox label="snapshot payload" value={effectiveSnapshot} />
           <JsonBox label="last run response" value={lastRun} />
         </div>
       </section>

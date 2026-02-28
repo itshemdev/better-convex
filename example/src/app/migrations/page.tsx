@@ -1,9 +1,9 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMaybeAuth } from 'better-convex/react';
+import { useMutation } from '@tanstack/react-query';
+import { useAuth } from 'better-convex/react';
 import { Loader2, Play, RotateCcw, Square } from 'lucide-react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -35,19 +35,50 @@ function JsonBox({ label, value }: { label: string; value: unknown }) {
 }
 
 export default function MigrationsPage() {
-  const isAuth = useMaybeAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+  const canRun = isAuthenticated && !isLoading;
   const crpc = useCRPC();
-  const queryClient = useQueryClient();
+  const [statusData, setStatusData] = useState<{
+    runs: MigrationRunRow[];
+    states: MigrationStateRow[];
+    activeRun: MigrationRunRow | null;
+  } | null>(null);
 
-  const statusQuery = useQuery(
-    crpc.migrationDemo.getStatus.queryOptions(undefined, {
-      skipUnauth: true,
-      refetchInterval: 2000,
+  const status = useMutation(
+    crpc.migrationDemo.getStatus.mutationOptions({
+      onSuccess: (data) => {
+        const payload = data as {
+          runs?: MigrationRunRow[];
+          states?: MigrationStateRow[];
+          activeRun?: MigrationRunRow | null;
+        };
+        setStatusData({
+          runs: Array.isArray(payload.runs) ? payload.runs : EMPTY_RUNS,
+          states: Array.isArray(payload.states) ? payload.states : EMPTY_STATES,
+          activeRun: payload.activeRun ?? null,
+        });
+      },
     })
   );
 
+  useEffect(() => {
+    if (!canRun) {
+      setStatusData(null);
+      return;
+    }
+
+    status.mutate(undefined);
+    const interval = window.setInterval(() => {
+      status.mutate(undefined);
+    }, 2000);
+
+    return () => window.clearInterval(interval);
+  }, [canRun, status.mutate]);
+
   const invalidateStatus = () => {
-    queryClient.invalidateQueries(crpc.migrationDemo.getStatus.queryFilter());
+    if (canRun) {
+      status.mutate(undefined);
+    }
   };
 
   const runUp = useMutation(
@@ -86,11 +117,10 @@ export default function MigrationsPage() {
     })
   );
 
-  const runs = (statusQuery.data?.runs ?? EMPTY_RUNS) as MigrationRunRow[];
-  const states = (statusQuery.data?.states ?? EMPTY_STATES) as MigrationStateRow[];
+  const runs = statusData?.runs ?? EMPTY_RUNS;
+  const states = statusData?.states ?? EMPTY_STATES;
   const latestRun = runs[0] ?? null;
-  const activeRun = (statusQuery.data?.activeRun ??
-    null) as MigrationRunRow | null;
+  const activeRun = statusData?.activeRun ?? null;
   const stateSummary = useMemo(() => {
     return {
       total: states.length,
@@ -119,7 +149,7 @@ export default function MigrationsPage() {
 
       <section className="mb-8 rounded-lg bg-secondary/30 p-4">
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          {isAuth ? (
+          {canRun ? (
             <>
               <Button
                 className="gap-2"
@@ -170,7 +200,9 @@ export default function MigrationsPage() {
             </>
           ) : (
             <p className="text-muted-foreground text-sm">
-              Sign in to execute migration mutations.
+              {isLoading
+                ? 'Loading auth state...'
+                : 'Sign in to execute migration mutations.'}
             </p>
           )}
         </div>

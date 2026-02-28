@@ -14,7 +14,7 @@ import {
   publicMutation,
   publicQuery,
 } from '../lib/crpc';
-import { internal } from './_generated/api';
+import { createRatelimitDemoCaller } from './generated/ratelimitDemo.runtime';
 import {
   createStaticProbeResult,
   RATELIMIT_COVERAGE_DEFINITIONS,
@@ -62,6 +62,22 @@ const COVERAGE_IDS = RATELIMIT_COVERAGE_DEFINITIONS.map(
 ) as [RateLimitCoverageId, ...RateLimitCoverageId[]];
 
 type ConvexRateLimitDb = ConvexRateLimitDbReader | ConvexRateLimitDbWriter;
+
+function getRateLimitReader({
+  db,
+}: {
+  db: ConvexRateLimitDbReader | ConvexRateLimitDbWriter;
+}): ConvexRateLimitDbReader {
+  return db;
+}
+
+function getRateLimitWriter({
+  db,
+}: {
+  db: ConvexRateLimitDbWriter;
+}): ConvexRateLimitDbWriter {
+  return db;
+}
 
 function asErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -456,7 +472,7 @@ export const getInteractiveStatus = publicQuery
     })
   )
   .query(async ({ ctx, input }) => {
-    const limiter = createInteractiveLimiter(ctx.db);
+    const limiter = createInteractiveLimiter(getRateLimitReader(ctx));
     return toInteractiveStatus(await limiter.check(input.sessionId));
   });
 
@@ -468,7 +484,7 @@ export const consumeInteractive = publicMutation
     })
   )
   .mutation(async ({ ctx, input }) => {
-    const limiter = createInteractiveLimiter(ctx.db);
+    const limiter = createInteractiveLimiter(getRateLimitWriter(ctx));
     return toInteractiveStatus(await limiter.limit(input.sessionId));
   });
 
@@ -480,7 +496,7 @@ export const resetInteractive = publicMutation
     })
   )
   .mutation(async ({ ctx, input }) => {
-    const limiter = createInteractiveLimiter(ctx.db);
+    const limiter = createInteractiveLimiter(getRateLimitWriter(ctx));
     await limiter.resetUsedTokens(input.sessionId);
     return toInteractiveStatus(await limiter.check(input.sessionId));
   });
@@ -495,12 +511,11 @@ export const runCoverageProbe = privateMutation
     })
   )
   .mutation(async ({ ctx, input }) => {
-    const session = await ctx.db
-      .query('session')
-      .withIndex('userId', (q) => q.eq('userId', input.userId))
-      .first();
+    const session = await ctx.orm.query.session.findFirst({
+      where: { userId: input.userId },
+    });
 
-    const probes = buildCoverageProbes(ctx.db, input.userId, {
+    const probes = buildCoverageProbes(getRateLimitWriter(ctx), input.userId, {
       ip: normalizeSignal(input.ip) ?? normalizeSignal(session?.ipAddress),
       userAgent:
         normalizeSignal(input.userAgent) ?? normalizeSignal(session?.userAgent),
@@ -509,6 +524,8 @@ export const runCoverageProbe = privateMutation
   });
 
 export const runCoverage = authAction.action(async ({ ctx }) => {
+  const caller = createRatelimitDemoCaller(ctx);
+
   const entries = await Promise.all(
     RATELIMIT_COVERAGE_DEFINITIONS.map(async (definition) => {
       if (!RATELIMIT_LIVE_PROBE_IDS.has(definition.id)) {
@@ -519,13 +536,10 @@ export const runCoverage = authAction.action(async ({ ctx }) => {
       }
 
       try {
-        const probe = (await ctx.runMutation(
-          internal.ratelimitDemo.runCoverageProbe,
-          {
-            id: definition.id,
-            userId: ctx.userId,
-          }
-        )) as ProbeResult;
+        const probe = await caller.runCoverageProbe({
+          id: definition.id,
+          userId: ctx.userId,
+        });
         return {
           ...definition,
           probe,

@@ -98,6 +98,29 @@ export declare const api: {
     >;
     toggleRandomFillReset: FunctionReference<"mutation", "public", {}, any>;
   };
+  authDemo: {
+    getAuthState: FunctionReference<"query", "public", {}, any>;
+    getSnapshot: FunctionReference<"query", "public", {}, any>;
+    runCoverage: FunctionReference<"mutation", "public", {}, any>;
+    runScenario: FunctionReference<
+      "mutation",
+      "public",
+      {
+        id:
+          | "anonymous-sign-in"
+          | "anonymous-flag"
+          | "anonymous-email-domain"
+          | "anonymous-generate-name"
+          | "link-account-non-anonymous"
+          | "on-link-account-bio-migration"
+          | "linked-source-anonymous-deleted"
+          | "delete-anonymous-endpoint"
+          | "disable-delete-anonymous-user-option"
+          | "generate-random-email-precedence";
+      },
+      any
+    >;
+  };
   items: {
     queries: {
       get: FunctionReference<"query", "public", { id: string }, string | null>;
@@ -106,7 +129,7 @@ export declare const api: {
   };
   migrationDemo: {
     cancel: FunctionReference<"mutation", "public", {}, any>;
-    getStatus: FunctionReference<"query", "public", {}, any>;
+    getStatus: FunctionReference<"mutation", "public", {}, any>;
     runDown: FunctionReference<
       "mutation",
       "public",

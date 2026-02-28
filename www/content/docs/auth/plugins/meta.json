@@ -1,5 +1,5 @@
 {
   "title": "Plugins",
   "defaultOpen": false,
-  "pages": ["admin", "organizations", "polar"]
+  "pages": ["admin", "anonymous", "organizations", "polar"]
 }
