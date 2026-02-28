@@ -604,6 +604,47 @@ Drizzle parity includes polymorphic-style relation filtering via relation `where
 True polymorphic FK integrity is app/schema-level (Step 2), not a single built-in polymorphic FK primitive.
 </Callout>
 
+#### Typed Query Synthesis (`polymorphic`)
+
+Once `comments.post` / `comments.video` `one()` relations exist, you can synthesize a typed discriminated union field in query results:
+
+```ts showLineNumbers
+import { z } from 'zod';
+
+const commentTargetSchema = z.discriminatedUnion('targetType', [
+  z.object({
+    targetType: z.literal('post'),
+    target: z.object({ title: z.string() }),
+  }),
+  z.object({
+    targetType: z.literal('video'),
+    target: z.object({ duration: z.number() }),
+  }),
+]);
+
+const comments = await db.query.comments.findMany({
+  polymorphic: {
+    discriminator: 'targetType',
+    schema: commentTargetSchema,
+    cases: {
+      post: 'post',
+      video: 'video',
+    },
+  },
+  limit: 20,
+});
+
+for (const row of comments) {
+  if (row.targetType === 'post') {
+    row.target.title;
+  } else {
+    row.target.duration;
+  }
+}
+```
+
+`polymorphic` is available on `findMany`, `findFirst`, and `findFirstOrThrow`. It cannot be used together with `pipeline`.
+
 For index requirements per relation type, see [API Reference](#indexing-for-relation-loading) below.
 
 ## Relation Loading with `with:`

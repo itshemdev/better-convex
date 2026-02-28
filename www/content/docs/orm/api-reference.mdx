@@ -336,6 +336,7 @@ await db.query.users.findMany({
 - `with`: relation loading
 - `columns`: post‑fetch projection
 - `extras`: post‑fetch computed fields
+- `polymorphic`: synthesize a discriminated-union relation field from `one()` relations
 
 **Sizing rules (non-paginated)**
 - Provide `limit`, or
@@ -413,6 +414,47 @@ await db.query.posts.findFirstOrThrow({
   search: { index: 'text_search', query: 'galaxy' },
 });
 ```
+
+### `findMany({ polymorphic })`
+
+```ts showLineNumbers
+import { z } from 'zod';
+
+const polymorphicSchema = z.discriminatedUnion('targetType', [
+  z.object({
+    targetType: z.literal('post'),
+    target: z.object({ title: z.string() }),
+  }),
+  z.object({
+    targetType: z.literal('video'),
+    target: z.object({ duration: z.number() }),
+  }),
+]);
+
+await db.query.comments.findMany({
+  polymorphic: {
+    discriminator: 'targetType',
+    schema: polymorphicSchema,
+    cases: {
+      post: 'post',
+      video: 'video',
+    },
+    // as: 'target', // default alias is "target"
+  },
+  limit: 20,
+});
+```
+
+**`polymorphic` rules**
+- `schema` must be `z.discriminatedUnion(...)`
+- `discriminator` must match the schema discriminator key
+- `cases` keys must match discriminator literals
+- `cases` values must be `one()` relation names on the source table
+- Runtime mismatch/parse failures throw immediately
+- Auto-loaded case relations are stripped unless explicitly requested in `with`
+- `pipeline` cannot be combined with `polymorphic`
+
+`polymorphic` is also available on `findFirst()` and `findFirstOrThrow()`.
 
 ### `findMany({ cursor, limit })`
 

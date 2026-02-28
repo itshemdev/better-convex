@@ -1801,12 +1801,197 @@ export class GelRelationalQuery<
     return filtered;
   }
 
+  private _resolvePolymorphicFinalizeState(): {
+    requestedWith: Record<string, unknown> | undefined;
+    effectiveWith: Record<string, unknown> | undefined;
+    autoLoadedCaseRelations: Set<string>;
+    discriminator: string;
+    alias: string;
+    cases: Record<string, string>;
+    schema: {
+      safeParse?: (input: unknown) => { success: boolean; error?: unknown };
+      parse?: (input: unknown) => unknown;
+    };
+  } | null {
+    const rawPolymorphic = (this.config as any).polymorphic;
+    if (rawPolymorphic === undefined) {
+      return null;
+    }
+    if (!this._isRecord(rawPolymorphic)) {
+      throw new Error('polymorphic must be an object.');
+    }
+
+    const discriminator = rawPolymorphic.discriminator;
+    if (typeof discriminator !== 'string' || discriminator.length === 0) {
+      throw new Error('polymorphic.discriminator must be a non-empty string.');
+    }
+
+    const aliasRaw = rawPolymorphic.as;
+    const alias =
+      aliasRaw === undefined
+        ? 'target'
+        : typeof aliasRaw === 'string' && aliasRaw.length > 0
+          ? aliasRaw
+          : null;
+    if (!alias) {
+      throw new Error('polymorphic.as must be a non-empty string when set.');
+    }
+
+    const schema = rawPolymorphic.schema as {
+      safeParse?: (input: unknown) => { success: boolean; error?: unknown };
+      parse?: (input: unknown) => unknown;
+    };
+    if (
+      !schema ||
+      (typeof schema.safeParse !== 'function' &&
+        typeof schema.parse !== 'function')
+    ) {
+      throw new Error(
+        'polymorphic.schema must provide safeParse() or parse().'
+      );
+    }
+
+    const rawCases = rawPolymorphic.cases;
+    if (!this._isRecord(rawCases) || Object.keys(rawCases).length === 0) {
+      throw new Error(
+        'polymorphic.cases must be a non-empty object of discriminator-to-relation mappings.'
+      );
+    }
+
+    const cases: Record<string, string> = {};
+    for (const [caseKey, caseRelation] of Object.entries(rawCases)) {
+      if (typeof caseRelation !== 'string' || caseRelation.length === 0) {
+        throw new Error(
+          `polymorphic.cases.${caseKey} must be a relation name string.`
+        );
+      }
+      const relation = this.tableConfig.relations[caseRelation];
+      if (!relation) {
+        throw new Error(
+          `polymorphic.cases.${caseKey} references unknown relation '${caseRelation}' on '${this.tableConfig.name}'.`
+        );
+      }
+      if (relation.relationType !== 'one') {
+        throw new Error(
+          `polymorphic.cases.${caseKey} must map to a one() relation; received '${caseRelation}'.`
+        );
+      }
+      cases[caseKey] = caseRelation;
+    }
+
+    const requestedWith = this.config.with as
+      | Record<string, unknown>
+      | undefined;
+    const effectiveWith = requestedWith ? { ...requestedWith } : {};
+    const autoLoadedCaseRelations = new Set<string>();
+
+    for (const relationName of new Set(Object.values(cases))) {
+      if (effectiveWith[relationName] === undefined) {
+        effectiveWith[relationName] = true;
+        autoLoadedCaseRelations.add(relationName);
+      }
+    }
+
+    return {
+      requestedWith,
+      effectiveWith: Object.keys(effectiveWith).length
+        ? effectiveWith
+        : undefined,
+      autoLoadedCaseRelations,
+      discriminator,
+      alias,
+      cases,
+      schema,
+    };
+  }
+
+  private _extractPolymorphicSchemaErrorMessage(error: unknown): string {
+    if (!error || typeof error !== 'object') {
+      return String(error);
+    }
+    const issueMessage = (
+      error as {
+        issues?: Array<{ message?: string }>;
+      }
+    ).issues?.[0]?.message;
+    if (issueMessage) {
+      return issueMessage;
+    }
+    const message = (error as { message?: string }).message;
+    return message ?? String(error);
+  }
+
+  private _synthesizePolymorphicRows(
+    rows: any[],
+    config: NonNullable<
+      ReturnType<typeof this._resolvePolymorphicFinalizeState>
+    >
+  ): void {
+    for (const row of rows) {
+      const discriminatorValue = row[config.discriminator];
+      const caseKey = String(discriminatorValue);
+      const relationName = config.cases[caseKey];
+      if (!relationName) {
+        throw new Error(
+          `polymorphic discriminator '${config.discriminator}' value '${caseKey}' has no matching case mapping.`
+        );
+      }
+
+      const targetValue = row[relationName];
+      if (targetValue === null || targetValue === undefined) {
+        throw new Error(
+          `polymorphic case '${caseKey}' resolved relation '${relationName}' but no target row was loaded.`
+        );
+      }
+
+      row[config.alias] = targetValue;
+
+      const payload = {
+        [config.discriminator]: discriminatorValue,
+        [config.alias]: targetValue,
+      };
+      if (typeof config.schema.safeParse === 'function') {
+        const result = config.schema.safeParse(payload);
+        if (!result.success) {
+          throw new Error(
+            `polymorphic schema parse failed: ${this._extractPolymorphicSchemaErrorMessage(result.error)}`
+          );
+        }
+      } else if (typeof config.schema.parse === 'function') {
+        try {
+          config.schema.parse(payload);
+        } catch (error) {
+          throw new Error(
+            `polymorphic schema parse failed: ${this._extractPolymorphicSchemaErrorMessage(error)}`
+          );
+        }
+      }
+    }
+
+    for (const relationName of config.autoLoadedCaseRelations) {
+      if (relationName === config.alias) {
+        continue;
+      }
+      for (const row of rows) {
+        delete row[relationName];
+      }
+    }
+  }
+
   private async _finalizeRows(rows: any[]): Promise<any[]> {
+    const polymorphicState = this._resolvePolymorphicFinalizeState();
+    const requestedWith =
+      polymorphicState?.requestedWith ??
+      (this.config.with as Record<string, unknown> | undefined);
+    const effectiveWith =
+      polymorphicState?.effectiveWith ??
+      (this.config.with as Record<string, unknown> | undefined);
+
     let rowsWithRelations = rows;
-    if (this.config.with) {
+    if (effectiveWith) {
       rowsWithRelations = await this._loadRelations(
         rowsWithRelations,
-        this.config.with,
+        effectiveWith,
         0,
         3,
         this.edgeMetadata,
@@ -1814,12 +1999,16 @@ export class GelRelationalQuery<
       );
     }
 
+    if (polymorphicState) {
+      this._synthesizePolymorphicRows(rowsWithRelations, polymorphicState);
+    }
+
     if ((this.config as any).extras) {
       rowsWithRelations = this._applyExtras(
         rowsWithRelations,
         (this.config as any).extras,
         this._getColumns(this.tableConfig),
-        this.config.with as Record<string, unknown> | undefined,
+        requestedWith,
         this.tableConfig.name,
         this.tableConfig
       );
@@ -4678,6 +4867,11 @@ export class GelRelationalQuery<
           'pipeline cannot be combined with columns in findMany().'
         );
       }
+      if (config.polymorphic !== undefined) {
+        throw new Error(
+          'pipeline cannot be combined with polymorphic in findMany().'
+        );
+      }
     }
 
     if (pageByKey) {
@@ -5292,35 +5486,7 @@ export class GelRelationalQuery<
           );
         }
 
-        let pageWithRelations = pageRows;
-        if (this.config.with) {
-          pageWithRelations = await this._loadRelations(
-            pageWithRelations,
-            this.config.with,
-            0,
-            3,
-            this.edgeMetadata,
-            this.tableConfig
-          );
-        }
-
-        if ((this.config as any).extras) {
-          pageWithRelations = this._applyExtras(
-            pageWithRelations,
-            (this.config as any).extras,
-            this._getColumns(this.tableConfig),
-            this.config.with as Record<string, unknown> | undefined,
-            this.tableConfig.name,
-            this.tableConfig
-          );
-        }
-
-        const selectedPage = this._selectColumns(
-          pageWithRelations,
-          (this.config as any).columns,
-          this._getColumns(this.tableConfig),
-          this.tableConfig
-        );
+        const selectedPage = await this._finalizeRows(pageRows);
 
         return {
           page: selectedPage,
@@ -5378,35 +5544,7 @@ export class GelRelationalQuery<
         }
       }
 
-      let rowsWithRelations = rows;
-      if (this.config.with) {
-        rowsWithRelations = await this._loadRelations(
-          rowsWithRelations,
-          this.config.with,
-          0,
-          3,
-          this.edgeMetadata,
-          this.tableConfig
-        );
-      }
-
-      if ((this.config as any).extras) {
-        rowsWithRelations = this._applyExtras(
-          rowsWithRelations,
-          (this.config as any).extras,
-          this._getColumns(this.tableConfig),
-          this.config.with as Record<string, unknown> | undefined,
-          this.tableConfig.name,
-          this.tableConfig
-        );
-      }
-
-      const selectedRows = this._selectColumns(
-        rowsWithRelations,
-        (this.config as any).columns,
-        this._getColumns(this.tableConfig),
-        this.tableConfig
-      );
+      const selectedRows = await this._finalizeRows(rows);
       return this._returnSelectedRows(selectedRows);
     }
 
@@ -5491,35 +5629,7 @@ export class GelRelationalQuery<
         rows = rows.slice(0, limit);
       }
 
-      let rowsWithRelations = rows;
-      if (this.config.with) {
-        rowsWithRelations = await this._loadRelations(
-          rowsWithRelations,
-          this.config.with,
-          0,
-          3,
-          this.edgeMetadata,
-          this.tableConfig
-        );
-      }
-
-      if ((this.config as any).extras) {
-        rowsWithRelations = this._applyExtras(
-          rowsWithRelations,
-          (this.config as any).extras,
-          this._getColumns(this.tableConfig),
-          this.config.with as Record<string, unknown> | undefined,
-          this.tableConfig.name,
-          this.tableConfig
-        );
-      }
-
-      const selectedRows = this._selectColumns(
-        rowsWithRelations,
-        (this.config as any).columns,
-        this._getColumns(this.tableConfig),
-        this.tableConfig
-      );
+      const selectedRows = await this._finalizeRows(rows);
       return this._returnSelectedRows(selectedRows);
     }
 
@@ -5604,35 +5714,7 @@ export class GelRelationalQuery<
             );
           }
 
-          let pageWithRelations = pageRows;
-          if (this.config.with) {
-            pageWithRelations = await this._loadRelations(
-              pageWithRelations,
-              this.config.with,
-              0,
-              3,
-              this.edgeMetadata,
-              this.tableConfig
-            );
-          }
-
-          if ((this.config as any).extras) {
-            pageWithRelations = this._applyExtras(
-              pageWithRelations,
-              (this.config as any).extras,
-              this._getColumns(this.tableConfig),
-              this.config.with as Record<string, unknown> | undefined,
-              this.tableConfig.name,
-              this.tableConfig
-            );
-          }
-
-          const selectedPage = this._selectColumns(
-            pageWithRelations,
-            (this.config as any).columns,
-            this._getColumns(this.tableConfig),
-            this.tableConfig
-          );
+          const selectedPage = await this._finalizeRows(pageRows);
 
           return {
             page: selectedPage,
@@ -5718,35 +5800,7 @@ export class GelRelationalQuery<
             );
           }
 
-          let pageWithRelations = pageRows;
-          if (this.config.with) {
-            pageWithRelations = await this._loadRelations(
-              pageWithRelations,
-              this.config.with,
-              0,
-              3,
-              this.edgeMetadata,
-              this.tableConfig
-            );
-          }
-
-          if ((this.config as any).extras) {
-            pageWithRelations = this._applyExtras(
-              pageWithRelations,
-              (this.config as any).extras,
-              this._getColumns(this.tableConfig),
-              this.config.with as Record<string, unknown> | undefined,
-              this.tableConfig.name,
-              this.tableConfig
-            );
-          }
-
-          const selectedPage = this._selectColumns(
-            pageWithRelations,
-            (this.config as any).columns,
-            this._getColumns(this.tableConfig),
-            this.tableConfig
-          );
+          const selectedPage = await this._finalizeRows(pageRows);
 
           return {
             page: selectedPage,
@@ -5826,37 +5880,7 @@ export class GelRelationalQuery<
         );
       }
 
-      // Load relations for page results if configured
-      let pageWithRelations = pageRows;
-      if (this.config.with) {
-        pageWithRelations = await this._loadRelations(
-          pageWithRelations,
-          this.config.with,
-          0,
-          3,
-          this.edgeMetadata,
-          this.tableConfig
-        );
-      }
-
-      if ((this.config as any).extras) {
-        pageWithRelations = this._applyExtras(
-          pageWithRelations,
-          (this.config as any).extras,
-          this._getColumns(this.tableConfig),
-          this.config.with as Record<string, unknown> | undefined,
-          this.tableConfig.name,
-          this.tableConfig
-        );
-      }
-
-      // Apply column selection if configured
-      const selectedPage = this._selectColumns(
-        pageWithRelations,
-        (this.config as any).columns,
-        this._getColumns(this.tableConfig),
-        this.tableConfig
-      );
+      const selectedPage = await this._finalizeRows(pageRows);
 
       return {
         page: selectedPage,
@@ -5939,37 +5963,7 @@ export class GelRelationalQuery<
       }
     }
 
-    // Load relations if configured
-    let rowsWithRelations = rows;
-    if (this.config.with) {
-      rowsWithRelations = await this._loadRelations(
-        rowsWithRelations,
-        this.config.with,
-        0,
-        3,
-        this.edgeMetadata,
-        this.tableConfig
-      );
-    }
-
-    if ((this.config as any).extras) {
-      rowsWithRelations = this._applyExtras(
-        rowsWithRelations,
-        (this.config as any).extras,
-        this._getColumns(this.tableConfig),
-        this.config.with as Record<string, unknown> | undefined,
-        this.tableConfig.name,
-        this.tableConfig
-      );
-    }
-
-    // Apply column selection if configured
-    const selectedRows = this._selectColumns(
-      rowsWithRelations,
-      (this.config as any).columns,
-      this._getColumns(this.tableConfig),
-      this.tableConfig
-    );
+    const selectedRows = await this._finalizeRows(rows);
 
     return this._returnSelectedRows(selectedRows);
   }

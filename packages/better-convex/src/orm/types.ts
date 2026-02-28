@@ -6,6 +6,7 @@ import type {
   IndexRangeBuilder,
 } from 'convex/server';
 import type { GenericId, Value } from 'convex/values';
+import type { z } from 'zod';
 import type {
   Assume,
   KnownKeysOnly,
@@ -361,6 +362,53 @@ type AggregateNoScanWhereArg<
   ? never
   : AggregateNoScanWhere<TTableConfig>;
 
+type OneRelationName<
+  TTableConfig extends TableRelationalConfig = TableRelationalConfig,
+> = Extract<
+  {
+    [K in keyof TTableConfig['relations']]: TTableConfig['relations'][K] extends One<
+      any,
+      any
+    >
+      ? K
+      : never;
+  }[keyof TTableConfig['relations']],
+  string
+>;
+
+type PolymorphicZodSchema = z.ZodDiscriminatedUnion<any, any>;
+
+type PolymorphicDiscriminatorFromSchema<
+  TSchema extends PolymorphicZodSchema = PolymorphicZodSchema,
+> =
+  TSchema extends z.ZodDiscriminatedUnion<any, infer TDisc extends string>
+    ? TDisc
+    : string;
+
+type PolymorphicCaseLiteralFromSchema<
+  TSchema extends PolymorphicZodSchema = PolymorphicZodSchema,
+  TDiscriminator extends string = string,
+> = Extract<
+  z.output<TSchema> extends Record<TDiscriminator, infer TValue>
+    ? TValue
+    : never,
+  string
+>;
+
+export type PolymorphicQueryConfig<
+  TTableConfig extends TableRelationalConfig = TableRelationalConfig,
+  TSchema extends PolymorphicZodSchema = PolymorphicZodSchema,
+  TDiscriminator extends string = PolymorphicDiscriminatorFromSchema<TSchema>,
+> = {
+  schema: TSchema;
+  discriminator: TDiscriminator;
+  cases: Record<
+    PolymorphicCaseLiteralFromSchema<TSchema, TDiscriminator>,
+    OneRelationName<TTableConfig>
+  >;
+  as?: string | undefined;
+};
+
 // ============================================================================
 // M3 Query Builder Types
 // ============================================================================
@@ -493,6 +541,10 @@ export type DBQueryConfig<
   pipeline?: _TIsRoot extends true
     ? FindManyPipelineConfig<TSchema, TTableConfig>
     : never;
+  /**
+   * Synthesize a discriminated-union relation field from one() cases.
+   */
+  polymorphic?: PolymorphicQueryConfig<TTableConfig> | undefined;
   /**
    * Key-based page boundaries.
    */
@@ -1517,6 +1569,15 @@ export type BuildQueryResult<
                   Exclude<TFullSelection['with'], undefined>,
                   TTableConfig['relations']
                 >
+              : {}) &
+            (TFullSelection extends {
+              polymorphic: infer TPolymorphicConfig;
+            }
+              ? TPolymorphicConfig extends {
+                  schema: infer TPolymorphicSchema extends z.ZodTypeAny;
+                }
+                ? z.output<TPolymorphicSchema>
+                : {}
               : {}) &
             (TFullSelection extends { vectorSearch: infer TVectorSearch }
               ? [TVectorSearch] extends [undefined]

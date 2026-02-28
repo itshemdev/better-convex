@@ -223,6 +223,42 @@ comments: {
 },
 ```
 
+**Step 3 — Typed query synthesis (`polymorphic`):** Once `one()` relations exist, synthesize a discriminated union field in query results:
+
+```ts
+import { z } from 'zod';
+
+const targetSchema = z.discriminatedUnion('targetType', [
+  z.object({ targetType: z.literal('post'), target: z.object({ title: z.string() }) }),
+  z.object({ targetType: z.literal('video'), target: z.object({ duration: z.number() }) }),
+]);
+
+const comments = await ctx.orm.query.comments.findMany({
+  polymorphic: {
+    discriminator: 'targetType',
+    schema: targetSchema,
+    cases: { post: 'post', video: 'video' },
+    // as: 'target', // optional alias; defaults to "target"
+  },
+  limit: 20,
+});
+
+for (const row of comments) {
+  switch (row.targetType) {
+    case 'post': row.target.title; break;
+    case 'video': row.target.duration; break;
+  }
+}
+```
+
+Rules:
+- `schema` must be `z.discriminatedUnion(...)`
+- `cases` values must be `one()` relation names on the source table
+- Discriminator/case mismatches throw at runtime
+- Auto-loaded case relations are stripped unless explicitly in `with`
+- `pipeline` and `polymorphic` cannot be combined
+- Available on `findMany`, `findFirst`, `findFirstOrThrow`
+
 ### Relation indexing requirements
 
 - `many()` → index child FK field (e.g., `posts.userId`)

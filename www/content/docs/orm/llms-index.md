@@ -26,7 +26,7 @@ This file provides a structured index of the ORM documentation for AI assistants
 
 **Querying Data:**
 
-- `/docs/orm/queries` - findMany(), findFirst(), cursor pagination (`cursor` + `limit`), filters, orderBy
+- `/docs/orm/queries` - findMany(), findFirst(), cursor pagination (`cursor` + `limit`), filters, orderBy, polymorphic discriminated unions
 - `/docs/orm/queries/operators` - All supported `where` operators (query + mutation)
 
 **Mutations:**
@@ -188,6 +188,7 @@ isNotNull(field);
 - Column selection (post‑fetch)
 - String operators (post‑fetch)
 - Mutations (insert, update, delete, returning)
+- Polymorphic discriminated unions (`findMany({ polymorphic })` synthesizes typed union field from `one()` relations)
 - Distinct via select pipeline (`.select().distinct({ fields: ['field'] })`)
 - Ranked access via `/docs/orm/queries/aggregates` (`rankIndex` + `rank()` for leaderboards, random access, sorted pagination)
 
