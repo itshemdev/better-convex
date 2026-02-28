@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { env } from '@/env';
 import {
+  authClient,
   useSignInMutationOptions,
   useSignInSocialMutationOptions,
   useSignUpMutationOptions,
@@ -48,6 +49,14 @@ export function SignForm() {
       onSuccess: () => router.push(getRedirectPath() as '/'),
     })
   );
+  const signInAnonymous = useMutation({
+    mutationFn: async () => {
+      await authClient.signIn.anonymous({
+        fetchOptions: { throw: true },
+      });
+    },
+    onSuccess: () => router.push(getRedirectPath() as '/'),
+  });
 
   const getCallbackUrl = () => {
     const callback = callbackUrl ? decodeURIComponent(callbackUrl) : '/';
@@ -87,8 +96,15 @@ export function SignForm() {
     });
   };
 
+  const handleAnonymousSignIn = () => {
+    signInAnonymous.mutate();
+  };
+
   const isPending =
-    signInSocial.isPending || signIn.isPending || signUp.isPending;
+    signInSocial.isPending ||
+    signIn.isPending ||
+    signUp.isPending ||
+    signInAnonymous.isPending;
 
   return (
     <div className={cn('mx-auto grid w-full max-w-[320px] gap-4')}>
@@ -178,6 +194,17 @@ export function SignForm() {
         >
           <GitHubIcon />
           Continue with Github
+        </Button>
+
+        <Button
+          className="w-full"
+          disabled={isPending}
+          onClick={handleAnonymousSignIn}
+          size="lg"
+          type="button"
+          variant="outline"
+        >
+          Continue as Guest
         </Button>
       </div>
 

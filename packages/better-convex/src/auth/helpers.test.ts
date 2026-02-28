@@ -3,6 +3,7 @@ import {
   getAuthUserIdentity,
   getHeaders,
   getSession,
+  getSessionNetworkSignals,
 } from './helpers';
 
 describe('getAuthUserIdentity', () => {
@@ -284,5 +285,93 @@ describe('getHeaders', () => {
     const headers = await getHeaders(ctx as any);
 
     expect(headers.get('authorization')).toBe('Bearer CUSTOM_PREFIX_TOKEN');
+  });
+});
+
+describe('getSessionNetworkSignals', () => {
+  test('returns empty signals when no session exists', async () => {
+    const signals = await getSessionNetworkSignals({
+      auth: {
+        getUserIdentity: async () => null,
+      },
+      db: {
+        get: async () => null,
+      },
+    } as any);
+
+    expect(signals).toEqual({});
+  });
+
+  test('maps ipAddress and userAgent from provided session without lookup', async () => {
+    const signals = await getSessionNetworkSignals(
+      {
+        auth: {
+          getUserIdentity: async () => {
+            throw new Error('should not resolve identity');
+          },
+        },
+        db: {
+          get: async () => {
+            throw new Error('should not resolve session');
+          },
+        },
+      } as any,
+      {
+        ipAddress: '127.0.0.1',
+        userAgent: 'Mozilla/5.0',
+      } as any
+    );
+
+    expect(signals).toEqual({
+      ip: '127.0.0.1',
+      userAgent: 'Mozilla/5.0',
+    });
+  });
+
+  test('resolves session from ctx when session arg is omitted', async () => {
+    const dbGet = mock(async (_sessionId: string) => ({
+      _id: 'identity-session',
+      ipAddress: '203.0.113.44',
+      userAgent: 'test-agent',
+    }));
+
+    const signals = await getSessionNetworkSignals({
+      auth: {
+        getUserIdentity: async () => ({
+          sessionId: 'identity-session',
+          subject: 'user-1',
+        }),
+      },
+      db: {
+        get: dbGet,
+      },
+    } as any);
+
+    expect(signals).toEqual({
+      ip: '203.0.113.44',
+      userAgent: 'test-agent',
+    });
+    expect(dbGet).toHaveBeenCalledWith('identity-session');
+  });
+
+  test('normalizes blank signals to undefined and trims whitespace', async () => {
+    const signals = await getSessionNetworkSignals(
+      {
+        auth: {
+          getUserIdentity: async () => null,
+        },
+        db: {
+          get: async () => null,
+        },
+      } as any,
+      {
+        ipAddress: ' 198.51.100.3 ',
+        userAgent: '   ',
+      } as any
+    );
+
+    expect(signals).toEqual({
+      ip: '198.51.100.3',
+    });
   });
 });

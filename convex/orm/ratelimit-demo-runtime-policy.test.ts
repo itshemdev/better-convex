@@ -11,6 +11,7 @@ describe('ratelimit demo runtime probe policy', () => {
     expect(RATELIMIT_LIVE_PROBE_IDS.has('sliding-window-limit')).toBe(true);
     expect(RATELIMIT_LIVE_PROBE_IDS.has('token-bucket-reserve')).toBe(true);
     expect(RATELIMIT_LIVE_PROBE_IDS.has('get-remaining')).toBe(true);
+    expect(RATELIMIT_LIVE_PROBE_IDS.has('deny-list-reason')).toBe(true);
   });
 
   it('returns deterministic static probe results for non-live rows', () => {

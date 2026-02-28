@@ -48,6 +48,11 @@ type InteractiveStatus = {
   reason: RatelimitResponse['reason'] | null;
 };
 
+type RateLimitClientSignals = {
+  ip?: string;
+  userAgent?: string;
+};
+
 const INTERACTIVE_WINDOW_MS = 30 * SECOND;
 const INTERACTIVE_LIMIT = 3;
 const INTERACTIVE_PREFIX = 'demo:ratelimit:interactive:v1';
@@ -63,6 +68,14 @@ function asErrorMessage(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+function normalizeSignal(value: string | null | undefined): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function createProbePrefix(userId: string, id: string): string {
@@ -227,7 +240,8 @@ function matchesExpected(entry: RateLimitCoverageEntry): boolean {
 
 function buildCoverageProbes(
   db: ConvexRateLimitDbWriter,
-  userId: string
+  userId: string,
+  signals: RateLimitClientSignals
 ): Record<RateLimitCoverageId, () => Promise<unknown>> {
   return {
     'fixed-window-limit': async () => {
@@ -347,24 +361,28 @@ function buildCoverageProbes(
       return current;
     },
     'deny-list-reason': async () => {
-      const deniedIp = '10.0.0.1';
+      const passedIp = signals.ip ?? '10.0.0.1';
       const limiter = new Ratelimit({
         db,
         prefix: createProbePrefix(userId, 'deny'),
         enableProtection: true,
         denyList: {
-          ips: [deniedIp],
+          ips: [passedIp],
         },
         limiter: Ratelimit.fixedWindow(2, MINUTE),
       });
 
-      const denied = await limiter.limit(userId, { ip: deniedIp });
+      const denied = await limiter.limit(userId, {
+        ip: passedIp,
+        userAgent: signals.userAgent,
+      });
       if (denied.success || denied.reason !== 'denyList') {
         throw new Error('Expected deny list rejection');
       }
 
       return {
-        passedIp: deniedIp,
+        passedIp,
+        passedUserAgent: signals.userAgent ?? null,
         deniedValue: denied.deniedValue ?? null,
         denied,
       };
@@ -472,10 +490,21 @@ export const runCoverageProbe = privateMutation
     z.object({
       id: z.enum(COVERAGE_IDS),
       userId: z.string().min(1),
+      ip: z.string().min(1).max(256).optional(),
+      userAgent: z.string().min(1).max(512).optional(),
     })
   )
   .mutation(async ({ ctx, input }) => {
-    const probes = buildCoverageProbes(ctx.db, input.userId);
+    const session = await ctx.db
+      .query('session')
+      .withIndex('userId', (q) => q.eq('userId', input.userId))
+      .first();
+
+    const probes = buildCoverageProbes(ctx.db, input.userId, {
+      ip: normalizeSignal(input.ip) ?? normalizeSignal(session?.ipAddress),
+      userAgent:
+        normalizeSignal(input.userAgent) ?? normalizeSignal(session?.userAgent),
+    });
     return runProbe(probes[input.id]);
   });
 

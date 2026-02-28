@@ -188,6 +188,7 @@ export const userTable = convexTable(
     // Better Auth optional fields
     image: text(),
     role: text(),
+    isAnonymous: boolean(),
     banned: boolean(),
     banReason: text(),
     banExpires: timestamp(),

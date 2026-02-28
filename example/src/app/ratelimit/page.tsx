@@ -108,12 +108,17 @@ function getDenyIpProof(entry: CoverageEntry): string | null {
 
   const proof = value as {
     passedIp?: unknown;
+    passedUserAgent?: unknown;
     deniedValue?: unknown;
     denied?: { deniedValue?: unknown };
   };
 
   const passedIp =
     typeof proof.passedIp === 'string' ? proof.passedIp : undefined;
+  const passedUserAgent =
+    typeof proof.passedUserAgent === 'string'
+      ? proof.passedUserAgent
+      : undefined;
   const deniedValue =
     typeof proof.deniedValue === 'string'
       ? proof.deniedValue
@@ -124,7 +129,8 @@ function getDenyIpProof(entry: CoverageEntry): string | null {
   if (!passedIp && !deniedValue) {
     return null;
   }
-  return `passed ${passedIp ?? '—'} -> denied ${deniedValue ?? '—'}`;
+  const agentPart = passedUserAgent ? ` (${passedUserAgent})` : '';
+  return `passed ${passedIp ?? '—'}${agentPart} -> denied ${deniedValue ?? '—'}`;
 }
 
 function JsonBox({ label, value }: { label: string; value: unknown }) {

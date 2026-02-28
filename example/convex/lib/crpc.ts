@@ -103,7 +103,7 @@ const devMiddleware = c.middleware<object>(({ meta, next, ctx }) => {
 
 /** Rate limit middleware - applies rate limiting based on meta.rateLimit and user tier */
 const rateLimitMiddleware = c.middleware<
-  MutationCtx & { user?: Pick<SessionUser, 'id' | 'plan'> | null }
+  MutationCtx & { user?: Pick<SessionUser, 'id' | 'plan' | 'session'> | null }
 >(async ({ ctx, meta, next }) => {
   await rateLimitGuard({
     ...ctx,

@@ -1053,6 +1053,7 @@ export type DataModel = {
       firstName?: null | string;
       github?: null | string;
       image?: null | string;
+      isAnonymous?: null | boolean;
       lastActiveOrganizationId?: null | string;
       lastName?: null | string;
       linkedin?: null | string;
@@ -1082,6 +1083,7 @@ export type DataModel = {
       | "firstName"
       | "github"
       | "image"
+      | "isAnonymous"
       | "lastActiveOrganizationId"
       | "lastName"
       | "linkedin"

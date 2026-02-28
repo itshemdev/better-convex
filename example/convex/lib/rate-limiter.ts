@@ -1,3 +1,4 @@
+import { getSessionNetworkSignals } from 'better-convex/auth';
 import { MINUTE, Ratelimit } from 'better-convex/plugins/ratelimit';
 import { CRPCError } from 'better-convex/server';
 import type { MutationCtx } from '../functions/generated/server';
@@ -49,7 +50,7 @@ export function getUserTier(
 export async function rateLimitGuard(
   ctx: MutationCtx & {
     rateLimitKey: string;
-    user: Pick<SessionUser, 'id' | 'plan'> | null;
+    user: Pick<SessionUser, 'id' | 'plan' | 'session'> | null;
   }
 ) {
   const tier = getUserTier(ctx.user);
@@ -65,7 +66,14 @@ export async function rateLimitGuard(
     denyListThreshold: 30,
   });
 
-  const status = await limiter.limit(identifier);
+  const { ip, userAgent } = await getSessionNetworkSignals(
+    ctx,
+    ctx.user?.session
+  );
+  const status = await limiter.limit(identifier, {
+    ip,
+    userAgent,
+  });
 
   if (!status.success) {
     throw new CRPCError({

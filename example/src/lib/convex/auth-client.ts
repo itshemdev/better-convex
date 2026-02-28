@@ -1,6 +1,7 @@
 import { type Auth, ac, roles } from '@convex/auth-shared';
 import {
   adminClient,
+  anonymousClient,
   inferAdditionalFields,
   organizationClient,
 } from 'better-auth/client/plugins';
@@ -18,6 +19,7 @@ export const authClient = createAuthClient({
   plugins: [
     inferAdditionalFields<Auth>(),
     adminClient(),
+    anonymousClient(),
     organizationClient({
       ac,
       roles,

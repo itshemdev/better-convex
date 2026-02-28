@@ -18,7 +18,20 @@ type SessionResult<TCtx extends GenericQueryCtx<any>> = LookupByIdResultByCtx<
 type SessionLookupCtx<TCtx extends GenericQueryCtx<any>> =
   QueryCtxWithPreferredOrmQueryTable<TCtx, 'session'>;
 
+export type SessionClientSignals = {
+  ip?: string;
+  userAgent?: string;
+};
+
 const SESSION_TOKEN_COOKIE_NAME = 'better-auth.session_token';
+
+const normalizeSignal = (value: string | null | undefined) => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
 
 const parseSessionTokenFromCookie = (cookieHeader: string | null) => {
   if (!cookieHeader) {
@@ -130,6 +143,30 @@ export async function getSession<TCtx extends GenericQueryCtx<any>>(
     sessionId
   );
 }
+
+export const getSessionNetworkSignals = async <
+  TCtx extends GenericQueryCtx<any>,
+>(
+  ctx: TCtx & QueryCtxWithPreferredOrmQueryTable<TCtx, 'session'>,
+  session?: SessionResult<TCtx> | null
+): Promise<SessionClientSignals> => {
+  const resolvedSession = (session ?? (await getSession<TCtx>(ctx))) as {
+    ipAddress?: string | null;
+    userAgent?: string | null;
+  } | null;
+
+  if (!resolvedSession) {
+    return {};
+  }
+
+  const ip = normalizeSignal(resolvedSession.ipAddress);
+  const userAgent = normalizeSignal(resolvedSession.userAgent);
+
+  return {
+    ...(ip ? { ip } : {}),
+    ...(userAgent ? { userAgent } : {}),
+  };
+};
 
 export const getHeaders = async <TCtx extends GenericQueryCtx<any>>(
   ctx: TCtx & QueryCtxWithPreferredOrmQueryTable<TCtx, 'session'>,

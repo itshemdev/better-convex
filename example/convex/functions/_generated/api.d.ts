@@ -1053,6 +1053,8 @@ export declare const internal: {
           | "deny-list-reason"
           | "timeout-open-mode"
           | "get-value-snapshot";
+        ip?: string;
+        userAgent?: string;
         userId: string;
       },
       any

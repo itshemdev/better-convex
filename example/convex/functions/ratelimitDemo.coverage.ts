@@ -91,7 +91,7 @@ export const RATELIMIT_COVERAGE_DEFINITIONS: readonly RateLimitCoverageDefinitio
       feature: 'deny list response reason',
       status: 'supported',
       reason: 'Configured deny lists return reason=denyList with deniedValue.',
-      example: "limit('u', { ip: '10.0.0.1' }) => reason=denyList",
+      example: "limit('u', { ip: session.ipAddress }) => reason=denyList",
     },
     {
       id: 'timeout-open-mode',

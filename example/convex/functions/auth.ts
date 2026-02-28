@@ -1,4 +1,4 @@
-import { admin, organization } from 'better-auth/plugins';
+import { admin, anonymous, organization } from 'better-auth/plugins';
 import { convex } from 'better-convex/auth';
 import { requireActionCtx } from 'better-convex/server';
 import { getEnv } from '../lib/get-env';
@@ -24,6 +24,7 @@ export default defineAuth((ctx) => {
     baseURL: env.SITE_URL,
     plugins: [
       admin(),
+      anonymous(),
       organization({
         ac,
         roles,

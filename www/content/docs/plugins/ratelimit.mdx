@@ -119,13 +119,86 @@ export async function rateLimitGuard(
 
 Now you have one place to tune plan limits, prefixes, and protection defaults.
 
+## No-wrapper IP signals with Better Auth
+
+If you already use Better Auth sessions, you can enrich rate-limit checks with session-derived network signals in normal query/mutation middleware, without wrapping every endpoint in `httpAction`.
+
+```ts title="convex/lib/rate-limiter.ts" showLineNumbers {1,4,23-24,26}
+import { getSessionNetworkSignals } from 'better-convex/auth';
+import { Ratelimit } from 'better-convex/plugins/ratelimit';
+import type { MutationCtx } from '../functions/generated/server';
+
+export async function rateLimitGuard(
+  ctx: MutationCtx & {
+    rateLimitKey: string;
+    user: { id: string; session?: { ipAddress?: string; userAgent?: string } } | null;
+  }
+) {
+  const limiter = new Ratelimit({
+    db: ctx.db,
+    prefix: `example:${ctx.rateLimitKey}`,
+    limiter: Ratelimit.fixedWindow(60, '1 m'),
+  });
+
+  const identifier = ctx.user?.id ?? 'anonymous';
+  const signals = await getSessionNetworkSignals(ctx, ctx.user?.session ?? null);
+  const status = await limiter.limit(identifier, signals);
+
+  if (!status.success) throw new Error('Too many requests');
+}
+```
+
+`getSessionNetworkSignals()` returns:
+- `{}` when no session is available
+- `{ ip }`, `{ userAgent }`, or both when present on the session
+- trimmed values, with blank strings normalized away
+
+### Optional anonymous-session strategy
+
+If your app has public flows and you still want session-based IP/user-agent keys, use Better Auth anonymous sessions and captcha-gate anonymous session creation.
+
+```ts title="convex/functions/auth.ts" showLineNumbers {1,6}
+import { anonymous } from 'better-auth/plugins';
+
+plugins: [
+  // ...other plugins
+  anonymous(),
+];
+```
+
+```ts title="src/lib/convex/auth-client.ts" showLineNumbers {1,6}
+import { anonymousClient } from 'better-auth/client/plugins';
+
+plugins: [
+  // ...other plugins
+  anonymousClient(),
+];
+```
+
+<Callout icon={<InfoIcon />}>
+  **Important:** session IP/user-agent is captured by auth/session lifecycle, not guaranteed to be fresh per request. Treat it as trusted-ish app-layer identity, not strict network truth. For cert/audit-grade per-request source IP controls, use HTTP/proxy logging and enforcement.
+</Callout>
+
+### Queries vs mutations
+
+- Use `check()` in queries (read-only, no token consumption).
+- Use `limit()` in mutations/actions (consumes capacity).
+
+```ts showLineNumbers
+// query
+const preview = await limiter.check(identifier, signals);
+
+// mutation/action
+const enforced = await limiter.limit(identifier, signals);
+```
+
 ## Wire it into middleware
 
 Next, apply the guard from cRPC middleware so your handlers stay focused on business logic.
 
 ```ts title="convex/lib/crpc.ts" showLineNumbers {1,5-13}
 const rateLimitMiddleware = c.middleware<
-  MutationCtx & { user?: Pick<SessionUser, 'id' | 'plan'> | null }
+  MutationCtx & { user?: Pick<SessionUser, 'id' | 'plan' | 'session'> | null }
 >(async ({ ctx, meta, next }) => {
   await rateLimitGuard({
     ...ctx,
